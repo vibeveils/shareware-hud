@@ -4,13 +4,18 @@
 	"version": "${version}",
 	"name": "Shareware HUD",
 	"description": "Recreates the HUD from the 2019 April Fools' version Java Edition 3D Shareware v1.34: a 3x3 hotbar, a player portrait and compact percentage stats.",
-	"authors": ["You"],
+	"authors": [
+		"You"
+	],
 	"license": "MIT",
 	"icon": "assets/sharewarehud/icon.png",
 	"environment": "client",
 	"entrypoints": {
 		"client": [
 			"io.github.sharewarehud.SharewareHud"
+		],
+		"modmenu": [
+			"io.github.sharewarehud.ModMenuIntegration"
 		]
 	},
 	"depends": {
@@ -18,5 +23,8 @@
 		"minecraft": "~26.3",
 		"java": ">=25",
 		"fabric-api": "*"
+	},
+	"suggests": {
+		"modmenu": "*"
 	}
 }

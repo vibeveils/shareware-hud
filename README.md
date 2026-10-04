@@ -16,7 +16,7 @@ Brings back the HUD from the 2019 April Fools' version **Java Edition 3D Sharewa
 - **Compact stats** — health and armour as percentages. Absorption turns the health number gold.
 - **Hunger** — raw beef on a bone; the beef drains as you get hungry. Creative shows only the bone and empty stat boxes, like the original.
 - Offhand slot under the beef, air bubbles above the hotbar block.
-- Experience is hidden (as in the original); the horse jump bar is drawn at the top of the screen.
+- XP level and progress shown compactly in the panel (or the vanilla bar, or hidden like the original). The horse jump bar is drawn at the top of the screen.
 - Held-item name, action-bar messages and mount health are moved up above the panel.
 
 ## Requirements
@@ -28,23 +28,27 @@ JDK 25 required.
 ```
 ./gradlew build
 ```
-The jar is in `build/libs/shareware-hud-1.0.0.jar`. Put it in `.minecraft/mods` alongside Fabric API.
+The jar is in `build/libs/shareware-hud-1.1.0.jar`. Put it in `.minecraft/mods` alongside Fabric API.
 
 No local JDK? Push this folder to a GitHub repo — the included workflow builds the jar and
 uploads it as an artifact on the Actions tab.
 
 To test in a dev client: `./gradlew runClient`.
 
-## Config — `config/sharewarehud.json`
-Created on first launch. Restart to apply changes.
+## Settings
+With Mod Menu installed: **Mods → Shareware HUD → Configure**. Changes apply straight away and
+save when you press Done. Without Mod Menu, edit `config/sharewarehud.json` and restart.
 
-| Key | Default | What it does |
-|---|---|---|
-| `portraitScale` | `42` | Size of the player in the portrait box. |
-| `portraitYOffset` | `0.55` | Vertical framing. Raise it to show more head, lower it to show more body. If you see legs instead of a head, try a negative value. |
-| `portraitLooksAround` | `true` | Random head glances. |
-| `showExperience` | `false` | Keep the XP bar (and locator bar) above the panel. |
-| `showItemDecorations` | `true` | Stack counts and durability bars on hotbar items. |
+| Setting | Key | Default | What it does |
+|---|---|---|---|
+| HUD size | `hudScale` | `1.0` | Panel size relative to your GUI scale. `1.0` = same as GUI scale; go down to `0.25` to shrink it. |
+| HUD opacity | `hudOpacity` | `1.0` | Fades the numbers, labels, icons, XP and selection box. Items and the portrait can't be faded by the game's GUI renderer, so they stay solid (and hide at 0%). |
+| Background opacity | `backgroundOpacity` | `1.0` | Fades the grey frame, section boxes and slot backgrounds. 0% leaves just the contents floating. |
+| Experience | `experienceStyle` | `PANEL` | `PANEL`: green level number and a mini bar in the beef column. `VANILLA`: normal XP bar above the panel (also brings back the locator bar). `HIDDEN`: no XP, like the original. |
+| Portrait zoom | `portraitScale` | `42` | Size of the player in the portrait box. |
+| Portrait framing | `portraitYOffset` | `0.55` | Raise to show more head, lower to show more body. |
+| Portrait looks around | `portraitLooksAround` | `true` | Random head glances. |
+| Item counts & durability | `showItemDecorations` | `true` | Stack counts and durability bars on hotbar items. |
 
 ## How it works
 No mixins. It uses Fabric API's `HudElementRegistry` to replace the vanilla `HOTBAR` element with
