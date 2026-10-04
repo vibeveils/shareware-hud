@@ -64,8 +64,9 @@ public final class SharewarePanel implements HudElement {
 	private static final Identifier ARMOR_FULL = Identifier.withDefaultNamespace("hud/armor_full");
 	private static final Identifier AIR = Identifier.withDefaultNamespace("hud/air");
 
-	private static final ItemStack BONE = new ItemStack(Items.BONE);
-	private static final ItemStack BEEF = new ItemStack(Items.BEEF);
+	// Created lazily: ItemStacks can't be built during mod init, before item components are bound.
+	private static ItemStack bone;
+	private static ItemStack beef;
 
 	private final SharewareConfig config;
 
@@ -208,7 +209,12 @@ public final class SharewarePanel implements HudElement {
 	}
 
 	private static void food(GuiGraphicsExtractor graphics, LocalPlayer player, boolean survival, int ix, int iy) {
-		graphics.item(BONE, ix, iy);
+		if (bone == null) {
+			bone = new ItemStack(Items.BONE);
+			beef = new ItemStack(Items.BEEF);
+		}
+
+		graphics.item(bone, ix, iy);
 		if (!survival) return; // the original only showed the bone in Creative
 
 		int food = Mth.clamp(player.getFoodData().getFoodLevel(), 0, 20);
@@ -217,7 +223,7 @@ public final class SharewarePanel implements HudElement {
 		// the beef "drains" from the top as you get hungry
 		int visible = Mth.ceil(16 * food / 20.0F);
 		graphics.enableScissor(ix, iy + 16 - visible, ix + 16, iy + 16);
-		graphics.item(BEEF, ix, iy);
+		graphics.item(beef, ix, iy);
 		graphics.disableScissor();
 	}
 
