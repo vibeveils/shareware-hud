@@ -4,11 +4,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import net.minecraft.client.DeltaTracker;
-import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
-import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.resources.Identifier;
-import net.minecraft.world.entity.PlayerRideableJumping;
 
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.rendering.v1.hud.HudElement;
@@ -24,8 +21,6 @@ public final class SharewareHud implements ClientModInitializer {
 	/** Height of the vanilla hotbar the rest of the vanilla HUD is positioned against. */
 	private static final int VANILLA_HOTBAR_HEIGHT = 22;
 
-	private static final HudElement NOTHING = (graphics, deltaTracker) -> { };
-
 	public static SharewareConfig config;
 
 	@Override
@@ -33,35 +28,42 @@ public final class SharewareHud implements ClientModInitializer {
 		config = SharewareConfig.load();
 		SharewarePanel panel = new SharewarePanel(config);
 
+		// Every replacement falls back to the original element while the mod is switched off.
+
 		// The panel takes the hotbar's place. The hotbar element is only extracted when the
-		// player has a hotbar (not in spectator) and the HUD is visible, which is exactly when
-		// the panel should show. It includes the stats, so it also shows in Creative mode
-		// with empty stat boxes, just like the original.
-		HudElementRegistry.replaceElement(VanillaHudElements.HOTBAR, _ -> panel);
+		// player has a hotbar (not in spectator) and the HUD is visible.
+		HudElementRegistry.replaceElement(VanillaHudElements.HOTBAR, original -> (graphics, deltaTracker) -> {
+			if (config.enabled) {
+				panel.extractRenderState(graphics, deltaTracker);
+			} else {
+				original.extractRenderState(graphics, deltaTracker);
+			}
+		});
 
-		// Vanilla stat bars are folded into the panel.
-		HudElementRegistry.replaceElement(VanillaHudElements.HEALTH_BAR, _ -> NOTHING);
-		HudElementRegistry.replaceElement(VanillaHudElements.ARMOR_BAR, _ -> NOTHING);
-		HudElementRegistry.replaceElement(VanillaHudElements.FOOD_BAR, _ -> NOTHING);
-		HudElementRegistry.replaceElement(VanillaHudElements.AIR_BAR, _ -> NOTHING);
+		// Folded into the panel: hearts, armour, mount hearts, hunger, air.
+		hiddenWhenEnabled(VanillaHudElements.HEALTH_BAR);
+		hiddenWhenEnabled(VanillaHudElements.ARMOR_BAR);
+		hiddenWhenEnabled(VanillaHudElements.FOOD_BAR);
+		hiddenWhenEnabled(VanillaHudElements.AIR_BAR);
+		hiddenWhenEnabled(VanillaHudElements.MOUNT_HEALTH);
 
-		// Things that normally sit just above the hotbar get pushed above the panel.
-		lifted(VanillaHudElements.HELD_ITEM_TOOLTIP);
-		lifted(VanillaHudElements.OVERLAY_MESSAGE);
-		lifted(VanillaHudElements.MOUNT_HEALTH);
+		// Text that normally sits just above the hotbar is pushed above the panel.
+		liftedWhenEnabled(VanillaHudElements.HELD_ITEM_TOOLTIP);
+		liftedWhenEnabled(VanillaHudElements.OVERLAY_MESSAGE);
 
-		// Experience bar / locator bar / jump bar.
-		// The jump bar always goes to the top of the screen, like the original.
+		// The contextual bar (XP / locator / horse jump). Jump and XP have meters in the panel;
+		// the "vanilla" XP style keeps the whole bar, moved above the panel.
 		HudElementRegistry.replaceElement(VanillaHudElements.INFO_BAR, original -> (graphics, deltaTracker) -> {
-			if (isRidingJumpable()) {
-				// vanilla draws the bar at guiHeight - 29; move it to the top edge
-				translated(graphics, deltaTracker, original, -(graphics.guiHeight() - 29) + 2);
+			if (!config.enabled) {
+				original.extractRenderState(graphics, deltaTracker);
 			} else if (config.experienceStyle == ExperienceStyle.VANILLA) {
 				translated(graphics, deltaTracker, original, lift());
 			}
 		});
 		HudElementRegistry.replaceElement(VanillaHudElements.EXPERIENCE_LEVEL, original -> (graphics, deltaTracker) -> {
-			if (config.experienceStyle == ExperienceStyle.VANILLA && !isRidingJumpable()) {
+			if (!config.enabled) {
+				original.extractRenderState(graphics, deltaTracker);
+			} else if (config.experienceStyle == ExperienceStyle.VANILLA) {
 				translated(graphics, deltaTracker, original, lift());
 			}
 		});
@@ -75,13 +77,15 @@ public final class SharewareHud implements ClientModInitializer {
 		return -Math.max(0, panelHeight - VANILLA_HOTBAR_HEIGHT);
 	}
 
-	private static boolean isRidingJumpable() {
-		LocalPlayer player = Minecraft.getInstance().player;
-		return player != null && player.getVehicle() instanceof PlayerRideableJumping;
+	private static void hiddenWhenEnabled(Identifier id) {
+		HudElementRegistry.replaceElement(id, original -> (graphics, deltaTracker) -> {
+			if (!config.enabled) original.extractRenderState(graphics, deltaTracker);
+		});
 	}
 
-	private static void lifted(Identifier id) {
-		HudElementRegistry.replaceElement(id, original -> (graphics, deltaTracker) -> translated(graphics, deltaTracker, original, lift()));
+	private static void liftedWhenEnabled(Identifier id) {
+		HudElementRegistry.replaceElement(id, original -> (graphics, deltaTracker) ->
+				translated(graphics, deltaTracker, original, config.enabled ? lift() : 0));
 	}
 
 	private static void translated(GuiGraphicsExtractor graphics, DeltaTracker deltaTracker, HudElement element, int dy) {

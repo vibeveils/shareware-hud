@@ -19,7 +19,7 @@ public final class SharewareConfig {
 	private static final Path FILE = FabricLoader.getInstance().getConfigDir().resolve("sharewarehud.json");
 
 	public enum ExperienceStyle {
-		/** Level number and a small bar inside the panel. */
+		/** Level number and a meter inside the panel. */
 		PANEL,
 		/** The normal vanilla XP bar, moved above the panel. */
 		VANILLA,
@@ -27,6 +27,8 @@ public final class SharewareConfig {
 		HIDDEN
 	}
 
+	/** Master switch. When off, the vanilla HUD is shown unchanged. */
+	public boolean enabled = true;
 	/** Size of the panel relative to the GUI scale. 1.0 = same as the GUI scale, smaller shrinks it. */
 	public float hudScale = 1.0F;
 	/** Opacity of the panel's contents: numbers, labels, icons, selection box. */
@@ -72,6 +74,7 @@ public final class SharewareConfig {
 	}
 
 	public void copyFrom(SharewareConfig other) {
+		enabled = other.enabled;
 		hudScale = other.hudScale;
 		hudOpacity = other.hudOpacity;
 		backgroundOpacity = other.backgroundOpacity;

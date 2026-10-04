@@ -13,6 +13,9 @@ import net.minecraft.resources.Identifier;
 import net.minecraft.tags.FluidTags;
 import net.minecraft.util.Mth;
 import net.minecraft.util.Util;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.entity.PlayerRideableJumping;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 
@@ -24,11 +27,12 @@ import io.github.sharewarehud.SharewareConfig.ExperienceStyle;
  * The 3D Shareware v1.34 status bar, laid out like a 90s FPS:
  *
  * <pre>
- * +--------+--------+-------+------+-----------+
- * |  100%  |   45%  | (you) | beef | [1][2][3] |
- * |        |        |       |  12  | [4][5][6] |
- * | HEALTH | ARMOR  |       | [OH] | [7][8][9] |
- * +--------+--------+-------+------+-----------+
+ * +----------+-------+---------+-----------+
+ * | [heart]10|       | beef 12 | [1][2][3] |
+ * | [armor]20| (you) | xp/air/ | [4][5][6] |
+ * | [horse]15|       | jump    | [7][8][9] |
+ * |          |       |  [OH]   |           |
+ * +----------+-------+---------+-----------+
  * </pre>
  *
  * Everything is laid out in "panel space" and scaled by {@code hudScale} around the bottom of
@@ -40,14 +44,16 @@ public final class SharewarePanel implements HudElement {
 	private static final int BORDER = 2;
 	private static final int GAP = 2;
 	private static final int SLOT = 20;
-	private static final int STAT_W = 54;
+	private static final int VITALS_W = 66;
 	private static final int FACE_W = 46;
-	private static final int FOOD_W = 28;
+	private static final int STATUS_W = 40;
 	private static final int ARMS_W = SLOT * 3 + 2;
 	private static final int SECTION_H = SLOT * 3 + 2;
+	private static final int ROW_H = 20;
+	private static final int ICON = 18;
 
 	public static final int HEIGHT = SECTION_H + BORDER * 2;
-	public static final int WIDTH = BORDER * 2 + STAT_W * 2 + FACE_W + FOOD_W + ARMS_W + GAP * 4;
+	public static final int WIDTH = BORDER * 2 + VITALS_W + FACE_W + STATUS_W + ARMS_W + GAP * 3;
 
 	// ---- colours (RGB; alpha comes from the opacity settings) ----
 	private static final int PANEL = 0x5B5B5B;
@@ -61,20 +67,27 @@ public final class SharewarePanel implements HudElement {
 	private static final int SLOT_LIGHT = 0xFFFFFF;
 	private static final int DIGITS = 0xD42A1C;
 	private static final int DIGITS_ABSORB = 0xF2C12E;
-	private static final int LABEL = 0xC6C6C6;
+	private static final int DIGITS_ARMOR = 0xD8D8D8;
+	private static final int DIGITS_MOUNT = 0xE08A3A;
 	private static final int XP_GREEN = 0x80FF20;
-	private static final int XP_BAR_BG = 0x000000;
+	private static final int AIR_BLUE = 0x5CB8FF;
+	private static final int JUMP_ORANGE = 0xF0A030;
+	private static final int METER_BG = 0x000000;
 
 	// ---- vanilla GUI sprites ----
 	private static final Identifier HOTBAR_SELECTION = Identifier.withDefaultNamespace("hud/hotbar_selection");
 	private static final Identifier HEART_CONTAINER = Identifier.withDefaultNamespace("hud/heart/container");
 	private static final Identifier HEART_FULL = Identifier.withDefaultNamespace("hud/heart/full");
+	private static final Identifier HEART_ABSORBING = Identifier.withDefaultNamespace("hud/heart/absorbing_full");
+	private static final Identifier VEHICLE_CONTAINER = Identifier.withDefaultNamespace("hud/heart/vehicle_container");
+	private static final Identifier VEHICLE_FULL = Identifier.withDefaultNamespace("hud/heart/vehicle_full");
 	private static final Identifier ARMOR_FULL = Identifier.withDefaultNamespace("hud/armor_full");
-	private static final Identifier AIR = Identifier.withDefaultNamespace("hud/air");
+	private static final Identifier ARMOR_EMPTY = Identifier.withDefaultNamespace("hud/armor_empty");
 
 	// Created lazily: ItemStacks can't be built during mod init, before item components are bound.
 	private static ItemStack bone;
 	private static ItemStack beef;
+	private static ItemStack compass;
 
 	private final SharewareConfig config;
 
@@ -98,6 +111,12 @@ public final class SharewarePanel implements HudElement {
 		LocalPlayer player = mc.player;
 		if (player == null || mc.gameMode == null) return;
 
+		if (bone == null) {
+			bone = new ItemStack(Items.BONE);
+			beef = new ItemStack(Items.BEEF);
+			compass = new ItemStack(Items.COMPASS);
+		}
+
 		Font font = mc.font;
 		boolean survival = mc.gameMode.canHurtPlayer();
 		float scale = config.hudScale;
@@ -111,50 +130,118 @@ public final class SharewarePanel implements HudElement {
 		graphics.pose().pushMatrix();
 		graphics.pose().scale(scale, scale);
 
-		// outer frame
 		bevel(graphics, x, y, WIDTH, HEIGHT, PANEL, PANEL_LIGHT, PANEL_DARK);
 
 		int sx = x + BORDER;
 		int sy = y + BORDER;
 
-		// HEALTH
-		well(graphics, sx, sy, STAT_W, SECTION_H);
-		if (survival) {
-			float absorb = player.getAbsorptionAmount();
-			int pct = Mth.ceil((player.getHealth() + absorb) / Math.max(1.0F, player.getMaxHealth()) * 100.0F);
-			bigNumber(graphics, font, pct + "%", sx, sy, STAT_W, absorb > 0 ? DIGITS_ABSORB : DIGITS);
-		}
-		labelWithIcon(graphics, font, "HEALTH", sx, sy, STAT_W, HEART_CONTAINER, HEART_FULL);
-		sx += STAT_W + GAP;
+		vitals(graphics, font, player, survival, sx, sy);
+		sx += VITALS_W + GAP;
 
-		// ARMOR
-		well(graphics, sx, sy, STAT_W, SECTION_H);
-		if (survival) {
-			bigNumber(graphics, font, player.getArmorValue() * 5 + "%", sx, sy, STAT_W, DIGITS);
-		}
-		labelWithIcon(graphics, font, "ARMOR", sx, sy, STAT_W, null, ARMOR_FULL);
-		sx += STAT_W + GAP;
-
-		// PORTRAIT
 		well(graphics, sx, sy, FACE_W, SECTION_H);
 		if (fgAlpha > 0) {
 			portrait(graphics, player, scale, sx + 1, sy + 1, sx + FACE_W - 1, sy + SECTION_H - 1);
 		}
 		sx += FACE_W + GAP;
 
-		// FOOD (beef on a bone), XP, offhand
-		well(graphics, sx, sy, FOOD_W, SECTION_H);
-		food(graphics, player, survival, sx + (FOOD_W - 16) / 2, sy + 5);
-		if (survival && config.experienceStyle == ExperienceStyle.PANEL) {
-			experience(graphics, font, player, sx, sy + 23, FOOD_W);
+		status(graphics, font, player, survival, sx, sy);
+		sx += STATUS_W + GAP;
+
+		hotbar(graphics, font, player, sx, sy);
+
+		graphics.pose().popMatrix();
+	}
+
+	// ------------------------------------------------------------------ sections
+
+	/** Hearts, armour points and mount hearts, one row each. */
+	private void vitals(GuiGraphicsExtractor graphics, Font font, LocalPlayer player, boolean survival, int sx, int sy) {
+		well(graphics, sx, sy, VITALS_W, SECTION_H);
+
+		// row 1: player hearts (absorption included, shown in gold)
+		int row = sy + 2;
+		float absorb = player.getAbsorptionAmount();
+		sprite(graphics, HEART_CONTAINER, sx + 3, row, ICON, ICON);
+		sprite(graphics, absorb > 0 ? HEART_ABSORBING : HEART_FULL, sx + 3, row, ICON, ICON);
+		if (survival) {
+			int halves = Mth.ceil(player.getHealth()) + Mth.ceil(absorb);
+			rowNumber(graphics, font, hearts(halves), sx, row, absorb > 0 ? DIGITS_ABSORB : DIGITS);
 		}
-		int offX = sx + (FOOD_W - SLOT) / 2;
+
+		// row 2: armour points
+		row += ROW_H;
+		int armor = player.getArmorValue();
+		sprite(graphics, armor > 0 ? ARMOR_FULL : ARMOR_EMPTY, sx + 3, row, ICON, ICON);
+		if (survival) {
+			rowNumber(graphics, font, String.valueOf(armor), sx, row, DIGITS_ARMOR);
+		}
+
+		// row 3: the ridden mob's hearts (empty when not riding anything with health)
+		row += ROW_H;
+		Entity vehicle = player.getVehicle();
+		if (vehicle instanceof LivingEntity mount && mount.isAlive()) {
+			sprite(graphics, VEHICLE_CONTAINER, sx + 3, row, ICON, ICON);
+			sprite(graphics, VEHICLE_FULL, sx + 3, row, ICON, ICON);
+			rowNumber(graphics, font, hearts(Mth.ceil(mount.getHealth())), sx, row, DIGITS_MOUNT);
+		}
+	}
+
+	/** Food (or a compass in Creative), XP / air / jump meters, and the offhand slot. */
+	private void status(GuiGraphicsExtractor graphics, Font font, LocalPlayer player, boolean survival, int sx, int sy) {
+		well(graphics, sx, sy, STATUS_W, SECTION_H);
+
+		int ix = sx + 3;
+		int iy = sy + 3;
+		if (survival) {
+			food(graphics, player, ix, iy);
+		} else if (fgAlpha > 0) {
+			// with the player as the holder, the compass needle points the right way
+			graphics.item(player, compass, ix, iy, 0);
+		}
+
+		boolean showXp = survival && config.experienceStyle == ExperienceStyle.PANEL;
+
+		// XP level number to the right of the food icon
+		if (showXp && player.experienceLevel > 0) {
+			String level = String.valueOf(player.experienceLevel);
+			int areaX = ix + 17;
+			int areaW = sx + STATUS_W - 2 - areaX;
+			float s = Math.min(1.0F, areaW / (float) font.width(level));
+			graphics.pose().pushMatrix();
+			graphics.pose().translate(areaX + (areaW - font.width(level) * s) / 2.0F, iy + 4.0F);
+			graphics.pose().scale(s, s);
+			outlined(graphics, font, level, 0, 0, XP_GREEN);
+			graphics.pose().popMatrix();
+		}
+
+		// meters: fixed rows so they don't jump around as they appear
+		int mx = sx + 3;
+		int mw = STATUS_W - 6;
+		int my = sy + 22;
+
+		if (showXp) {
+			meter(graphics, mx, my, mw, player.experienceProgress, XP_GREEN);
+		}
+
+		int maxAir = player.getMaxAirSupply();
+		int air = Math.clamp(player.getAirSupply(), 0, maxAir);
+		if (survival && (player.isEyeInFluid(FluidTags.WATER) || air < maxAir)) {
+			meter(graphics, mx, my + 6, mw, air / (float) Math.max(1, maxAir), AIR_BLUE);
+		}
+
+		if (player.getVehicle() instanceof PlayerRideableJumping) {
+			meter(graphics, mx, my + 12, mw, player.getJumpRidingScale(), JUMP_ORANGE);
+		}
+
+		// offhand
+		int offX = sx + (STATUS_W - SLOT) / 2;
 		int offY = sy + SECTION_H - SLOT - 1;
 		slot(graphics, offX, offY);
-		drawItem(graphics, font, player.getOffhandItem(), offX + 2, offY + 2);
-		sx += FOOD_W + GAP;
+		drawItem(graphics, font, player, player.getOffhandItem(), offX + 2, offY + 2, 10);
+	}
 
-		// ARMS: the 3x3 hotbar, slot 1 top-left .. slot 9 bottom-right
+	/** The 3x3 hotbar, slot 1 top-left .. slot 9 bottom-right. */
+	private void hotbar(GuiGraphicsExtractor graphics, Font font, LocalPlayer player, int sx, int sy) {
 		well(graphics, sx, sy, ARMS_W, SECTION_H);
 		int gx = sx + 1;
 		int gy = sy + 1;
@@ -166,43 +253,9 @@ public final class SharewarePanel implements HudElement {
 			sprite(graphics, HOTBAR_SELECTION, gx + (selected % 3) * SLOT - 2, gy + (selected / 3) * SLOT - 2, 24, 23);
 		}
 		for (int i = 0; i < 9; i++) {
-			drawItem(graphics, font, player.getInventory().getItem(i),
-					gx + (i % 3) * SLOT + 2, gy + (i / 3) * SLOT + 2);
+			drawItem(graphics, font, player, player.getInventory().getItem(i),
+					gx + (i % 3) * SLOT + 2, gy + (i / 3) * SLOT + 2, i + 1);
 		}
-
-		// air bubbles sit just above the hotbar block
-		if (survival) {
-			air(graphics, player, x + WIDTH - BORDER, y - 10);
-		}
-
-		graphics.pose().popMatrix();
-	}
-
-	// ------------------------------------------------------------------ sections
-
-	private void bigNumber(GuiGraphicsExtractor graphics, Font font, String text, int sx, int sy, int w, int rgb) {
-		float scale = 2.0F;
-		int textW = font.width(text);
-		// shrink very long values (e.g. modded 1000%+) so they still fit the box
-		if (textW * scale > w - 4) scale = (w - 4) / (float) textW;
-
-		graphics.pose().pushMatrix();
-		graphics.pose().translate(sx + (w - textW * scale) / 2.0F, sy + 14.0F);
-		graphics.pose().scale(scale, scale);
-		text(graphics, font, text, 0, 0, rgb, true);
-		graphics.pose().popMatrix();
-	}
-
-	private void labelWithIcon(GuiGraphicsExtractor graphics, Font font, String label, int sx, int sy, int w,
-			Identifier background, Identifier icon) {
-		int textW = font.width(label);
-		int total = 9 + 2 + textW;
-		int ix = sx + (w - total) / 2;
-		int iy = sy + SECTION_H - 16;
-
-		if (background != null) sprite(graphics, background, ix, iy, 9, 9);
-		sprite(graphics, icon, ix, iy, 9, 9);
-		text(graphics, font, label, ix + 11, iy + 1, LABEL, true);
 	}
 
 	private void portrait(GuiGraphicsExtractor graphics, LocalPlayer player, float scale, int x1, int y1, int x2, int y2) {
@@ -239,65 +292,62 @@ public final class SharewarePanel implements HudElement {
 				modelScale, config.portraitYOffset, mouseX, mouseY, player);
 	}
 
-	private static void food(GuiGraphicsExtractor graphics, LocalPlayer player, boolean survival, int ix, int iy) {
-		if (bone == null) {
-			bone = new ItemStack(Items.BONE);
-			beef = new ItemStack(Items.BEEF);
-		}
-
+	/** Raw beef on a bone; the beef drains from the top as you get hungry. */
+	private void food(GuiGraphicsExtractor graphics, LocalPlayer player, int ix, int iy) {
+		if (fgAlpha == 0) return;
 		graphics.item(bone, ix, iy);
-		if (!survival) return; // the original only showed the bone in Creative
 
 		int food = Mth.clamp(player.getFoodData().getFoodLevel(), 0, 20);
 		if (food <= 0) return;
 
-		// the beef "drains" from the top as you get hungry
 		int visible = Mth.ceil(16 * food / 20.0F);
 		graphics.enableScissor(ix, iy + 16 - visible, ix + 16, iy + 16);
 		graphics.item(beef, ix, iy);
 		graphics.disableScissor();
 	}
 
-	/** Compact XP: vanilla-style green level number over a thin progress bar. */
-	private void experience(GuiGraphicsExtractor graphics, Font font, LocalPlayer player, int sx, int top, int w) {
-		int level = player.experienceLevel;
-		if (level > 0) {
-			String text = String.valueOf(level);
-			int tx = sx + (w - font.width(text)) / 2;
-			// black outline like the vanilla level number
-			text(graphics, font, text, tx + 1, top, 0x000000, false);
-			text(graphics, font, text, tx - 1, top, 0x000000, false);
-			text(graphics, font, text, tx, top + 1, 0x000000, false);
-			text(graphics, font, text, tx, top - 1, 0x000000, false);
-			text(graphics, font, text, tx, top, XP_GREEN, false);
-		}
-
-		int barW = w - 6;
-		int bx = sx + 3;
-		int by = top + 10;
-		int filled = Math.round(barW * Math.clamp(player.experienceProgress, 0.0F, 1.0F));
-		graphics.fill(bx, by, bx + barW, by + 3, fg(XP_BAR_BG));
-		if (filled > 0) graphics.fill(bx, by + 1, bx + filled, by + 2, fg(XP_GREEN));
-	}
-
-	private void air(GuiGraphicsExtractor graphics, LocalPlayer player, int right, int top) {
-		int max = player.getMaxAirSupply();
-		int supply = Math.clamp(player.getAirSupply(), 0, max);
-		if (!player.isEyeInFluid(FluidTags.WATER) && supply >= max) return;
-
-		int bubbles = Mth.ceil(supply * 10.0 / Math.max(1, max));
-		for (int i = 0; i < bubbles; i++) {
-			sprite(graphics, AIR, right - 9 - i * 8, top, 9, 9);
-		}
-	}
-
 	// ------------------------------------------------------------------ helpers
 
+	/** Number to the right of a vitals icon, as big as fits (up to 2x). */
+	private void rowNumber(GuiGraphicsExtractor graphics, Font font, String text, int sx, int rowY, int rgb) {
+		int areaX = sx + 3 + ICON + 3;
+		int areaW = sx + VITALS_W - 3 - areaX;
+		int textW = font.width(text);
+		float s = Math.min(2.0F, areaW / (float) textW);
+
+		graphics.pose().pushMatrix();
+		graphics.pose().translate(areaX, rowY + (ICON - 7.0F * s) / 2.0F);
+		graphics.pose().scale(s, s);
+		text(graphics, font, text, 0, 0, rgb, true);
+		graphics.pose().popMatrix();
+	}
+
+	/** Thin progress bar: black trough, coloured fill. */
+	private void meter(GuiGraphicsExtractor graphics, int x, int y, int w, float progress, int rgb) {
+		if (fgAlpha == 0) return;
+		int filled = Math.round((w - 2) * Math.clamp(progress, 0.0F, 1.0F));
+		graphics.fill(x, y, x + w, y + 4, fg(METER_BG));
+		if (filled > 0) graphics.fill(x + 1, y + 1, x + 1 + filled, y + 3, fg(rgb));
+	}
+
+	/** Half-heart count as hearts: 19 -> "9.5", 20 -> "10". */
+	private static String hearts(int halves) {
+		return halves % 2 == 0 ? String.valueOf(halves / 2) : (halves / 2) + ".5";
+	}
+
 	/** Items can't be faded by the GUI renderer, so they stay opaque unless the HUD is fully hidden. */
-	private void drawItem(GuiGraphicsExtractor graphics, Font font, ItemStack stack, int ix, int iy) {
+	private void drawItem(GuiGraphicsExtractor graphics, Font font, LocalPlayer player, ItemStack stack, int ix, int iy, int seed) {
 		if (stack.isEmpty() || fgAlpha == 0) return;
-		graphics.item(stack, ix, iy);
+		graphics.item(player, stack, ix, iy, seed);
 		if (config.showItemDecorations) graphics.itemDecorations(font, stack, ix, iy);
+	}
+
+	private void outlined(GuiGraphicsExtractor graphics, Font font, String text, int x, int y, int rgb) {
+		text(graphics, font, text, x + 1, y, 0x000000, false);
+		text(graphics, font, text, x - 1, y, 0x000000, false);
+		text(graphics, font, text, x, y + 1, 0x000000, false);
+		text(graphics, font, text, x, y - 1, 0x000000, false);
+		text(graphics, font, text, x, y, rgb, false);
 	}
 
 	private void text(GuiGraphicsExtractor graphics, Font font, String text, int x, int y, int rgb, boolean shadow) {
@@ -328,7 +378,7 @@ public final class SharewarePanel implements HudElement {
 		g.fill(x + w - 1, y + 1, x + w, y + h - 1, bg(dark));
 	}
 
-	/** Recessed section the stats sit in. */
+	/** Recessed section. */
 	private void well(GuiGraphicsExtractor g, int x, int y, int w, int h) {
 		bevel(g, x, y, w, h, WELL, WELL_DARK, WELL_LIGHT);
 	}
